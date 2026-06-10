@@ -1,0 +1,60 @@
+name: Deploy Hono App to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd app
+
+            git pull origin main
+
+            npm install
+            npm run build
+
+            pm2 restart hono-app || pm2 start dist/index.js --name hono-app
+
+            pm2 save
+          EOF
+
+      - name: Smoke test - /health endpoint
+        run: |
+          echo "Waiting for app to stabilize..."
+          sleep 5
+
+          URL="http://${{ secrets.EC2_HOST }}:2080/health"
+
+          for i in {1..10}; do
+            echo "Attempt $i: checking $URL"
+
+            RESPONSE=$(curl -fs $URL || true)
+
+            if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+              echo "✅ Smoke test passed"
+              exit 0
+            fi
+
+            echo "Not ready yet..."
+            sleep 3
+          done
+
+          echo "❌ Smoke test failed"
+          exit 1
