@@ -32,7 +32,7 @@ jobs:
             npm install
             npm run build
 
-            pm2 restart hono-app || pm2 start dist/index.js --name hono-app
+            pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
 
             pm2 save
           '"
@@ -40,14 +40,14 @@ jobs:
       - name: Smoke test - /health endpoint
         run: |
           echo "Waiting for app to stabilize..."
-          sleep 5
+          sleep 10
 
-          URL="http://${{ secrets.EC2_HOST }}:2080/health"
+          URL="http://${{ secrets.EC2_HOST }}/health"
 
           for i in {1..10}; do
             echo "Attempt $i: checking $URL"
 
-            RESPONSE=$(curl -fs $URL || true)
+            RESPONSE=$(curl -fs "$URL" || true)
 
             if echo "$RESPONSE" | grep -q '"status":"ok"'; then
               echo "✅ Smoke test passed"
